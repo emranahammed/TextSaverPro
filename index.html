@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TextSaver Pro - Cloud & Local</title>
+    <title>TextSaver Pro - Cloud Database</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -20,7 +20,6 @@
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #6366f1; border-radius: 10px; }
 
-        /* Link Styling */
         .note-content a { color: #4f46e5; text-decoration: underline; font-weight: 600; }
         .dark .note-content a { color: #818cf8; }
     </style>
@@ -34,7 +33,7 @@
                 <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-lg">T</div>
                 <div>
                     <h1 class="text-xl font-bold dark:text-white leading-none">TextSaver<span class="text-indigo-600">Pro</span></h1>
-                    <span id="syncStatus" class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Checking Sync...</span>
+                    <span id="syncStatus" class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Database Connecting...</span>
                 </div>
             </div>
             
@@ -55,10 +54,10 @@
                 <div id="charCount" class="text-xs font-bold text-gray-400">০ ক্যারেক্টার</div>
             </div>
             
-            <textarea id="textInput" rows="5" placeholder="এখানে আপনার মনের কথা বা প্রয়োজনীয় তথ্য লিখুন..." class="w-full p-2 bg-transparent dark:text-white text-xl focus:outline-none resize-none min-h-[150px]"></textarea>
+            <textarea id="textInput" rows="5" placeholder="সরাসরি ডাটাবেজে সেভ করতে এখানে লিখুন..." class="w-full p-2 bg-transparent dark:text-white text-xl focus:outline-none resize-none min-h-[150px]"></textarea>
             
             <div class="flex justify-end items-center mt-6 gap-4">
-                <button id="saveBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-10 rounded-2xl transition-all shadow-xl shadow-indigo-200 active:scale-95">সেভ করুন</button>
+                <button id="saveBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-10 rounded-2xl transition-all shadow-xl shadow-indigo-200 active:scale-95">Cloud Save</button>
             </div>
         </div>
 
@@ -66,7 +65,7 @@
         <div class="flex gap-4 mb-8">
             <div class="relative flex-grow">
                 <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
-                <input type="text" id="searchInput" placeholder="আপনার সেভ করা নোটগুলো খুঁজুন..." class="w-full p-4 pl-12 bg-white dark:bg-slate-800 dark:text-white rounded-2xl shadow-sm outline-none border border-gray-100 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 transition-all">
+                <input type="text" id="searchInput" placeholder="ডাটাবেজ থেকে খুঁজুন..." class="w-full p-4 pl-12 bg-white dark:bg-slate-800 dark:text-white rounded-2xl shadow-sm outline-none border border-gray-100 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 transition-all">
             </div>
         </div>
 
@@ -95,14 +94,16 @@
     <textarea id="copyHelper" style="position:fixed; left:-9999px;"></textarea>
 
     <script>
+        // Supabase configuration
         const SUPABASE_URL = 'https://czylrgeqicuwhbrazslt.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_dIgFSIys2o6Q9Yb0u8eQPQ_H0GSutO_';
         let supabaseClientInstance = null;
         
         try {
+            // Initializing Supabase
             supabaseClientInstance = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         } catch(e) {
-            console.warn("Supabase load failed.");
+            console.error("Supabase failed to initialize.");
         }
 
         const elements = {
@@ -124,36 +125,41 @@
 
         let allNotes = [];
 
-        // Helper to convert URLs in text to clickable links
         function linkify(text) {
             const urlPattern = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig;
             return text.replace(urlPattern, '<a href="$1" target="_blank" onclick="event.stopPropagation()">$1</a>');
         }
 
+        // Modified to only load from Supabase
         async function loadNotes() {
-            let cloudData = [];
-            if (supabaseClientInstance) {
-                try {
-                    const { data, error } = await supabaseClientInstance.from('saved_texts').select('*').order('created_at', { ascending: false });
-                    if (!error) {
-                        cloudData = data || [];
-                        elements.syncStatus.textContent = "Cloud Sync Active";
-                        elements.syncStatus.className = "text-[10px] text-emerald-500 font-bold uppercase tracking-widest";
-                    }
-                } catch (err) {
-                    elements.syncStatus.textContent = "Local Mode Active";
-                }
+            if (!supabaseClientInstance) {
+                elements.syncStatus.textContent = "Supabase Error";
+                return;
             }
-            const localData = JSON.parse(localStorage.getItem('my_saved_notes') || '[]');
-            const merged = [...cloudData];
-            localData.forEach(ln => { if (!merged.find(m => m.id === ln.id)) merged.push(ln); });
-            allNotes = merged.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-            renderNotes(allNotes);
+
+            try {
+                elements.syncStatus.textContent = "Loading from Cloud...";
+                const { data, error } = await supabaseClientInstance
+                    .from('saved_texts')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+
+                allNotes = data || [];
+                elements.syncStatus.textContent = "Cloud Database Connected";
+                elements.syncStatus.className = "text-[10px] text-emerald-500 font-bold uppercase tracking-widest";
+                renderNotes(allNotes);
+            } catch (err) {
+                console.error(err);
+                elements.syncStatus.textContent = "Database Error";
+                elements.syncStatus.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest";
+            }
         }
 
         function renderNotes(notes) {
             if (notes.length === 0) {
-                elements.textList.innerHTML = `<div class="col-span-full text-center py-20 text-gray-400 font-medium">ঝুলি খালি!</div>`;
+                elements.textList.innerHTML = `<div class="col-span-full text-center py-20 text-gray-400 font-medium">ডাটাবেজে কোনো নোট পাওয়া যায়নি!</div>`;
                 return;
             }
             elements.textList.innerHTML = notes.map(note => {
@@ -185,25 +191,45 @@
             `}).join('');
         }
 
+        // Modified to save ONLY to Supabase
         elements.saveBtn.onclick = async () => {
             const content = elements.textInput.value.trim();
             const tag = elements.tagSelect.value;
+            
             if (!content) return;
-            elements.saveBtn.disabled = true;
-            elements.saveBtn.textContent = "সেভ হচ্ছে...";
-            const newNote = { id: crypto.randomUUID(), content, tag, created_at: new Date().toISOString() };
-            const localNotes = JSON.parse(localStorage.getItem('my_saved_notes') || '[]');
-            localNotes.unshift(newNote);
-            localStorage.setItem('my_saved_notes', JSON.stringify(localNotes));
-            if (supabaseClientInstance) {
-                try { await supabaseClientInstance.from('saved_texts').insert([newNote]); } catch (e) {}
+            if (!supabaseClientInstance) {
+                alert("Database not ready!");
+                return;
             }
-            confetti({ particleCount: 80, spread: 70, origin: { y: 0.8 } });
-            elements.textInput.value = '';
-            elements.saveBtn.disabled = false;
-            elements.saveBtn.textContent = "সেভ করুন";
-            updateCharCount();
-            loadNotes();
+
+            elements.saveBtn.disabled = true;
+            elements.saveBtn.textContent = "সংরক্ষণ হচ্ছে...";
+
+            const newNote = { 
+                id: crypto.randomUUID(), 
+                content: content, 
+                tag: tag, 
+                created_at: new Date().toISOString() 
+            };
+
+            try {
+                const { error } = await supabaseClientInstance
+                    .from('saved_texts')
+                    .insert([newNote]);
+
+                if (error) throw error;
+
+                confetti({ particleCount: 80, spread: 70, origin: { y: 0.8 } });
+                elements.textInput.value = '';
+                updateCharCount();
+                await loadNotes(); // Reload from database
+            } catch (e) {
+                console.error(e);
+                alert("ক্লাউডে সেভ করতে সমস্যা হয়েছে! টেবিল নেম 'saved_texts' ঠিক আছে তো?");
+            } finally {
+                elements.saveBtn.disabled = false;
+                elements.saveBtn.textContent = "Cloud Save";
+            }
         };
 
         window.copyToClipboard = (id) => {
@@ -229,11 +255,8 @@
             const note = allNotes.find(n => n.id === id);
             if (!note) return;
             currentNoteId = id;
-            
-            // For modal, we use innerHTML to show links, but still escape content first for safety
             const safeContent = escapeHtml(note.content);
             elements.modalBody.innerHTML = linkify(safeContent);
-            
             elements.modalTag.textContent = note.tag || 'Personal';
             elements.viewModal.classList.replace('hidden', 'flex');
             document.body.style.overflow = 'hidden';
@@ -254,20 +277,31 @@
         };
 
         elements.modalDeleteBtn.onclick = async () => {
-            if (!confirm("ডিলিট করতে চান?")) return;
-            let localNotes = JSON.parse(localStorage.getItem('my_saved_notes') || '[]');
-            localNotes = localNotes.filter(n => n.id !== currentNoteId);
-            localStorage.setItem('my_saved_notes', JSON.stringify(localNotes));
-            if (supabaseClientInstance) {
-                await supabaseClientInstance.from('saved_texts').delete().eq('id', currentNoteId);
+            if (!confirm("ডাটাবেজ থেকে মুছে ফেলতে চান?")) return;
+            
+            try {
+                if (supabaseClientInstance) {
+                    const { error } = await supabaseClientInstance
+                        .from('saved_texts')
+                        .delete()
+                        .eq('id', currentNoteId);
+                    
+                    if (error) throw error;
+                    
+                    closeModal();
+                    await loadNotes();
+                }
+            } catch(e) {
+                alert("মুছে ফেলতে সমস্যা হয়েছে!");
             }
-            closeModal();
-            loadNotes();
         };
 
         elements.searchInput.oninput = (e) => {
             const term = e.target.value.toLowerCase();
-            const filtered = allNotes.filter(n => n.content.toLowerCase().includes(term) || (n.tag && n.tag.toLowerCase().includes(term)));
+            const filtered = allNotes.filter(n => 
+                n.content.toLowerCase().includes(term) || 
+                (n.tag && n.tag.toLowerCase().includes(term))
+            );
             renderNotes(filtered);
         };
 
