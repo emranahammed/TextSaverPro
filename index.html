@@ -19,6 +19,10 @@
         
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #6366f1; border-radius: 10px; }
+
+        /* Link Styling */
+        .note-content a { color: #4f46e5; text-decoration: underline; font-weight: 600; }
+        .dark .note-content a { color: #818cf8; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen pb-20 dark:bg-slate-900">
@@ -78,7 +82,7 @@
             </button>
             
             <div id="modalTag" class="inline-block px-4 py-1 bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 rounded-full text-xs font-bold mb-4 uppercase tracking-widest">TAG</div>
-            <div id="modalBody" class="text-gray-800 dark:text-gray-200 text-xl leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto mb-8 pr-2 break-words"></div>
+            <div id="modalBody" class="note-content text-gray-800 dark:text-gray-200 text-xl leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto mb-8 pr-2 break-words"></div>
             
             <div class="flex gap-3 justify-end items-center">
                 <button id="modalSearchBtn" class="px-6 py-3 bg-blue-50 text-blue-600 rounded-2xl font-bold hover:bg-blue-100">Search Web</button>
@@ -120,6 +124,12 @@
 
         let allNotes = [];
 
+        // Helper to convert URLs in text to clickable links
+        function linkify(text) {
+            const urlPattern = /(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig;
+            return text.replace(urlPattern, '<a href="$1" target="_blank" onclick="event.stopPropagation()">$1</a>');
+        }
+
         async function loadNotes() {
             let cloudData = [];
             if (supabaseClientInstance) {
@@ -146,14 +156,18 @@
                 elements.textList.innerHTML = `<div class="col-span-full text-center py-20 text-gray-400 font-medium">ঝুলি খালি!</div>`;
                 return;
             }
-            elements.textList.innerHTML = notes.map(note => `
+            elements.textList.innerHTML = notes.map(note => {
+                const safeContent = escapeHtml(note.content);
+                const linkifiedContent = linkify(safeContent);
+
+                return `
                 <div class="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-gray-100 dark:border-slate-700 card-hover transition-all animate-pop flex flex-col justify-between group">
                     <div onclick="openNote('${note.id}')" class="cursor-pointer">
                         <div class="flex justify-between items-center mb-3">
                             <span class="text-[10px] font-black text-indigo-500 bg-indigo-50 dark:bg-indigo-900/50 px-3 py-1 rounded-full uppercase tracking-tighter">${note.tag || 'Personal'}</span>
                             <span class="text-[10px] text-gray-400 font-mono">${new Date(note.created_at).toLocaleDateString('bn-BD')}</span>
                         </div>
-                        <p class="text-gray-700 dark:text-gray-200 font-medium line-clamp-4 leading-relaxed break-words whitespace-pre-wrap mb-4">${escapeHtml(note.content)}</p>
+                        <p class="note-content text-gray-700 dark:text-gray-200 font-medium line-clamp-4 leading-relaxed break-words whitespace-pre-wrap mb-4">${linkifiedContent}</p>
                     </div>
                     
                     <div class="flex justify-between items-center border-t dark:border-slate-700 pt-4">
@@ -168,7 +182,7 @@
                         <button onclick="openNote('${note.id}')" class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest hover:underline">Details →</button>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
         }
 
         elements.saveBtn.onclick = async () => {
@@ -198,7 +212,6 @@
             elements.copyHelper.value = note.content;
             elements.copyHelper.select();
             document.execCommand('copy');
-            // Toast notification alternative
             const btn = event.currentTarget;
             const original = btn.innerHTML;
             btn.innerHTML = '✅';
@@ -216,7 +229,11 @@
             const note = allNotes.find(n => n.id === id);
             if (!note) return;
             currentNoteId = id;
-            elements.modalBody.textContent = note.content;
+            
+            // For modal, we use innerHTML to show links, but still escape content first for safety
+            const safeContent = escapeHtml(note.content);
+            elements.modalBody.innerHTML = linkify(safeContent);
+            
             elements.modalTag.textContent = note.tag || 'Personal';
             elements.viewModal.classList.replace('hidden', 'flex');
             document.body.style.overflow = 'hidden';
