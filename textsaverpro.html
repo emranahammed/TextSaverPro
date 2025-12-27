@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TextSaver Pro - Cloud & Local</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Hind Siliguri', sans-serif; transition: background-color 0.3s ease; }
+        .dark body { background-color: #0f172a; }
+        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); }
+        .dark .glass { background: rgba(30, 41, 59, 0.8); }
+        .card-hover:hover { transform: translateY(-3px); box-shadow: 0 15px 30px -10px rgba(0,0,0,0.1); }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .animate-pop { animation: fadeIn 0.3s ease-out; }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #6366f1; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-20 dark:bg-slate-900">
+
+    <div class="max-w-5xl mx-auto px-4 pt-8">
+        <!-- Header Section -->
+        <div class="flex justify-between items-center mb-8 glass p-5 rounded-3xl sticky top-4 z-40 border border-white/20 shadow-xl">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-lg">T</div>
+                <div>
+                    <h1 class="text-xl font-bold dark:text-white leading-none">TextSaver<span class="text-indigo-600">Pro</span></h1>
+                    <span id="syncStatus" class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Checking Sync...</span>
+                </div>
+            </div>
+            
+            <button id="darkModeToggle" class="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 hover:rotate-12 transition-all">
+                <span id="themeIcon" class="text-xl">🌙</span>
+            </button>
+        </div>
+
+        <!-- Editor Section -->
+        <div class="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-6 mb-8 border border-white dark:border-slate-700 relative overflow-hidden">
+            <div class="flex justify-between items-center mb-4">
+                <select id="tagSelect" class="bg-indigo-50 dark:bg-slate-900 dark:text-gray-300 px-4 py-2 rounded-xl text-sm font-bold border-none outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                    <option value="Personal">Personal</option>
+                    <option value="Work">Work</option>
+                    <option value="Ideas">Ideas</option>
+                    <option value="Code">Code</option>
+                </select>
+                <div id="charCount" class="text-xs font-bold text-gray-400">০ ক্যারেক্টার</div>
+            </div>
+            
+            <textarea id="textInput" rows="5" placeholder="এখানে আপনার মনের কথা বা প্রয়োজনীয় তথ্য লিখুন..." class="w-full p-2 bg-transparent dark:text-white text-xl focus:outline-none resize-none min-h-[150px]"></textarea>
+            
+            <div class="flex justify-end items-center mt-6 gap-4">
+                <button id="saveBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-10 rounded-2xl transition-all shadow-xl shadow-indigo-200 active:scale-95">সেভ করুন</button>
+            </div>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="flex gap-4 mb-8">
+            <div class="relative flex-grow">
+                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                <input type="text" id="searchInput" placeholder="আপনার সেভ করা নোটগুলো খুঁজুন..." class="w-full p-4 pl-12 bg-white dark:bg-slate-800 dark:text-white rounded-2xl shadow-sm outline-none border border-gray-100 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 transition-all">
+            </div>
+        </div>
+
+        <!-- Notes Grid -->
+        <div id="textList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+    </div>
+
+    <!-- Details View Modal -->
+    <div id="viewModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-[2.5rem] max-w-2xl w-full p-8 shadow-2xl animate-pop relative border border-white/10">
+            <button onclick="closeModal()" class="absolute top-6 right-6 text-gray-400 hover:text-red-500 transition-colors">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            
+            <div id="modalTag" class="inline-block px-4 py-1 bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-300 rounded-full text-xs font-bold mb-4 uppercase tracking-widest">TAG</div>
+            <div id="modalBody" class="text-gray-800 dark:text-gray-200 text-xl leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto mb-8 pr-2 break-words"></div>
+            
+            <div class="flex gap-3 justify-end items-center">
+                <button id="modalSearchBtn" class="px-6 py-3 bg-blue-50 text-blue-600 rounded-2xl font-bold hover:bg-blue-100">Search Web</button>
+                <button id="modalCopyBtn" class="px-6 py-3 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 rounded-2xl font-bold hover:bg-gray-200">Copy</button>
+                <button id="modalDeleteBtn" class="px-6 py-3 bg-red-50 text-red-600 rounded-2xl font-bold hover:bg-red-100">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <textarea id="copyHelper" style="position:fixed; left:-9999px;"></textarea>
+
+    <script>
+        const SUPABASE_URL = 'https://czylrgeqicuwhbrazslt.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_dIgFSIys2o6Q9Yb0u8eQPQ_H0GSutO_';
+        let supabaseClientInstance = null;
+        
+        try {
+            supabaseClientInstance = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        } catch(e) {
+            console.warn("Supabase load failed.");
+        }
+
+        const elements = {
+            textInput: document.getElementById('textInput'),
+            saveBtn: document.getElementById('saveBtn'),
+            textList: document.getElementById('textList'),
+            tagSelect: document.getElementById('tagSelect'),
+            charCount: document.getElementById('charCount'),
+            searchInput: document.getElementById('searchInput'),
+            viewModal: document.getElementById('viewModal'),
+            modalBody: document.getElementById('modalBody'),
+            modalTag: document.getElementById('modalTag'),
+            modalCopyBtn: document.getElementById('modalCopyBtn'),
+            modalDeleteBtn: document.getElementById('modalDeleteBtn'),
+            modalSearchBtn: document.getElementById('modalSearchBtn'),
+            copyHelper: document.getElementById('copyHelper'),
+            syncStatus: document.getElementById('syncStatus')
+        };
+
+        let allNotes = [];
+
+        async function loadNotes() {
+            let cloudData = [];
+            if (supabaseClientInstance) {
+                try {
+                    const { data, error } = await supabaseClientInstance.from('saved_texts').select('*').order('created_at', { ascending: false });
+                    if (!error) {
+                        cloudData = data || [];
+                        elements.syncStatus.textContent = "Cloud Sync Active";
+                        elements.syncStatus.className = "text-[10px] text-emerald-500 font-bold uppercase tracking-widest";
+                    }
+                } catch (err) {
+                    elements.syncStatus.textContent = "Local Mode Active";
+                }
+            }
+            const localData = JSON.parse(localStorage.getItem('my_saved_notes') || '[]');
+            const merged = [...cloudData];
+            localData.forEach(ln => { if (!merged.find(m => m.id === ln.id)) merged.push(ln); });
+            allNotes = merged.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            renderNotes(allNotes);
+        }
+
+        function renderNotes(notes) {
+            if (notes.length === 0) {
+                elements.textList.innerHTML = `<div class="col-span-full text-center py-20 text-gray-400 font-medium">ঝুলি খালি!</div>`;
+                return;
+            }
+            elements.textList.innerHTML = notes.map(note => `
+                <div class="bg-white dark:bg-slate-800 p-6 rounded-[2rem] border border-gray-100 dark:border-slate-700 card-hover transition-all animate-pop flex flex-col justify-between group">
+                    <div onclick="openNote('${note.id}')" class="cursor-pointer">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-[10px] font-black text-indigo-500 bg-indigo-50 dark:bg-indigo-900/50 px-3 py-1 rounded-full uppercase tracking-tighter">${note.tag || 'Personal'}</span>
+                            <span class="text-[10px] text-gray-400 font-mono">${new Date(note.created_at).toLocaleDateString('bn-BD')}</span>
+                        </div>
+                        <p class="text-gray-700 dark:text-gray-200 font-medium line-clamp-4 leading-relaxed break-words whitespace-pre-wrap mb-4">${escapeHtml(note.content)}</p>
+                    </div>
+                    
+                    <div class="flex justify-between items-center border-t dark:border-slate-700 pt-4">
+                        <div class="flex gap-2">
+                             <button onclick="copyToClipboard('${note.id}')" class="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors group/btn relative" title="Copy Content">
+                                📋 <span class="hidden group-hover/btn:block absolute -top-8 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-2 py-1 rounded">Copy</span>
+                            </button>
+                            <button onclick="webSearch('${note.id}')" class="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full transition-colors group/btn relative" title="Search Google">
+                                🌐 <span class="hidden group-hover/btn:block absolute -top-8 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-2 py-1 rounded">Search</span>
+                            </button>
+                        </div>
+                        <button onclick="openNote('${note.id}')" class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest hover:underline">Details →</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        elements.saveBtn.onclick = async () => {
+            const content = elements.textInput.value.trim();
+            const tag = elements.tagSelect.value;
+            if (!content) return;
+            elements.saveBtn.disabled = true;
+            elements.saveBtn.textContent = "সেভ হচ্ছে...";
+            const newNote = { id: crypto.randomUUID(), content, tag, created_at: new Date().toISOString() };
+            const localNotes = JSON.parse(localStorage.getItem('my_saved_notes') || '[]');
+            localNotes.unshift(newNote);
+            localStorage.setItem('my_saved_notes', JSON.stringify(localNotes));
+            if (supabaseClientInstance) {
+                try { await supabaseClientInstance.from('saved_texts').insert([newNote]); } catch (e) {}
+            }
+            confetti({ particleCount: 80, spread: 70, origin: { y: 0.8 } });
+            elements.textInput.value = '';
+            elements.saveBtn.disabled = false;
+            elements.saveBtn.textContent = "সেভ করুন";
+            updateCharCount();
+            loadNotes();
+        };
+
+        window.copyToClipboard = (id) => {
+            const note = allNotes.find(n => n.id === id);
+            if (!note) return;
+            elements.copyHelper.value = note.content;
+            elements.copyHelper.select();
+            document.execCommand('copy');
+            // Toast notification alternative
+            const btn = event.currentTarget;
+            const original = btn.innerHTML;
+            btn.innerHTML = '✅';
+            setTimeout(() => btn.innerHTML = original, 1500);
+        };
+
+        window.webSearch = (id) => {
+            const note = allNotes.find(n => n.id === id);
+            if (!note) return;
+            window.open(`https://www.google.com/search?q=${encodeURIComponent(note.content)}`, '_blank');
+        };
+
+        let currentNoteId = null;
+        window.openNote = (id) => {
+            const note = allNotes.find(n => n.id === id);
+            if (!note) return;
+            currentNoteId = id;
+            elements.modalBody.textContent = note.content;
+            elements.modalTag.textContent = note.tag || 'Personal';
+            elements.viewModal.classList.replace('hidden', 'flex');
+            document.body.style.overflow = 'hidden';
+        };
+
+        window.closeModal = () => {
+            elements.viewModal.classList.replace('flex', 'hidden');
+            document.body.style.overflow = 'auto';
+        };
+
+        elements.modalSearchBtn.onclick = () => webSearch(currentNoteId);
+        
+        elements.modalCopyBtn.onclick = () => {
+            copyToClipboard(currentNoteId);
+            const originalText = elements.modalCopyBtn.textContent;
+            elements.modalCopyBtn.textContent = "Copied! ✅";
+            setTimeout(() => elements.modalCopyBtn.textContent = originalText, 2000);
+        };
+
+        elements.modalDeleteBtn.onclick = async () => {
+            if (!confirm("ডিলিট করতে চান?")) return;
+            let localNotes = JSON.parse(localStorage.getItem('my_saved_notes') || '[]');
+            localNotes = localNotes.filter(n => n.id !== currentNoteId);
+            localStorage.setItem('my_saved_notes', JSON.stringify(localNotes));
+            if (supabaseClientInstance) {
+                await supabaseClientInstance.from('saved_texts').delete().eq('id', currentNoteId);
+            }
+            closeModal();
+            loadNotes();
+        };
+
+        elements.searchInput.oninput = (e) => {
+            const term = e.target.value.toLowerCase();
+            const filtered = allNotes.filter(n => n.content.toLowerCase().includes(term) || (n.tag && n.tag.toLowerCase().includes(term)));
+            renderNotes(filtered);
+        };
+
+        document.getElementById('darkModeToggle').onclick = () => {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            document.getElementById('themeIcon').textContent = isDark ? '☀️' : '🌙';
+        };
+
+        function updateCharCount() {
+            elements.charCount.textContent = `${elements.textInput.value.length} ক্যারেক্টার`;
+        }
+        elements.textInput.oninput = updateCharCount;
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        window.onload = loadNotes;
+    </script>
+</body>
+</html>
